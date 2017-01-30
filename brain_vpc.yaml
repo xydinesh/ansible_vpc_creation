@@ -1,0 +1,64 @@
+---
+- hosts: localhost
+  tasks:
+  - name: delete vpc
+    ec2_vpc:
+      state: present
+      cidr_block: 10.0.0.0/16
+      resource_tags: { "env":"dev", "Name": "nibiru_vpc"}
+      internet_gateway: True
+      region: us-east-2
+    register: vpc
+  - name: create public subnet
+    ec2_vpc_subnet:
+      state: present
+      vpc_id: "{{ vpc.vpc_id }}"
+      cidr: 10.0.1.0/24
+      az: us-east-2a
+      region: us-east-2
+      resource_tags:
+        Name: "public subnet"
+    register: public_subnet
+  - name: create private subnet
+    ec2_vpc_subnet:
+      state: present
+      vpc_id: "{{ vpc.vpc_id }}"
+      cidr: 10.0.2.0/24
+      az: us-east-2b
+      region: us-east-2
+      resource_tags:
+        Name: "private subnet"
+    register: private_subnet
+  - name: Set up public subnet route table
+    ec2_vpc_route_table:
+      vpc_id: "{{ vpc.vpc_id }}"
+      region: us-east-2
+      tags:
+        Name: "public route table"
+      subnets:
+        - "{{ public_subnet.subnet.id }}"
+      routes:
+        - dest: 0.0.0.0/0
+          gateway_id: "{{ vpc.igw_id }}"
+    register: public_route_table
+  - name: Create new nat gateway and allocate new EIP if a nat gateway does not yet exist in the 
+    ec2_vpc_nat_gateway:
+      state: present
+      subnet_id: "{{ public_subnet.subnet.id }}"
+      wait: yes
+      region: us-east-2
+      if_exist_do_not_create: true
+    register: nat_gateway
+  - name: Set up private subnet route table
+    ec2_vpc_route_table:
+      vpc_id: "{{ vpc.vpc_id }}"
+      region: us-east-2
+      tags:
+        Name: "private route table"
+      subnets:
+        - "{{ private_subnet.subnet.id }}"
+      routes:
+        - dest: 0.0.0.0/0
+          gateway_id: "{{ nat_gateway.nat_gateway_id }}"
+    register: private_route_table
+
