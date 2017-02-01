@@ -1,0 +1,7 @@
+# Configure and deploy stackstorm
+- hosts: st2
+  roles:
+  - st2
+  tags:
+  - st2
+
