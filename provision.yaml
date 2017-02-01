@@ -1,0 +1,116 @@
+---
+# VPC setup for brain
+- name: Provision VPC in AWS
+  hosts: localhost
+  connection: local
+  gather_facts: False
+
+  # load AWS variables from this group vars file
+  vars_files:
+  - group_vars/brain_vpc.txt
+
+  tasks:
+  - name: create vpc
+    ec2_vpc:
+      state: present
+      cidr_block: "{{ brain_vpc.cidr }}"
+      resource_tags: "{{ brain_vpc.tags }}"
+      internet_gateway: "{{ brain_vpc.igw }}"
+      region: us-east-2
+    register: vpc
+  - name: create public subnet
+    ec2_vpc_subnet:
+      state: present
+      vpc_id: "{{ vpc.vpc_id }}"
+      cidr: "{{ brain_vpc.public_subnet.cidr }}"
+      az: "{{ brain_vpc.public_subnet.az }}"
+      region: "{{ brain_vpc.region }}"
+      resource_tags: "{{ brain_vpc.public_subnet.tags }}"
+    register: public_subnet
+  - name: create private subnet
+    ec2_vpc_subnet:
+      state: present
+      vpc_id: "{{ vpc.vpc_id }}"
+      cidr: "{{ brain_vpc.private_subnet.cidr }}"
+      az: "{{ brain_vpc.private_subnet.az }}"
+      region: "{{ brain_vpc.region }}"
+      resource_tags: "{{ brain_vpc.private_subnet.tags }}"
+    register: private_subnet
+  - name: Set up public subnet route table
+    ec2_vpc_route_table:
+      vpc_id: "{{ vpc.vpc_id }}"
+      region: us-east-2
+      tags:
+        Name: "public route table"
+      subnets:
+        - "{{ public_subnet.subnet.id }}"
+      routes:
+        - dest: 0.0.0.0/0
+          gateway_id: "{{ vpc.igw_id }}"
+    register: public_route_table
+  - name: Create new nat gateway and allocate new EIP
+    ec2_vpc_nat_gateway:
+      state: present
+      subnet_id: "{{ public_subnet.subnet.id }}"
+      wait: yes
+      region: us-east-2
+      if_exist_do_not_create: true
+    register: nat_gateway
+  - name: Set up private subnet route table
+    ec2_vpc_route_table:
+      vpc_id: "{{ vpc.vpc_id }}"
+      region: us-east-2
+      tags:
+        Name: "private route table"
+      subnets:
+        - "{{ private_subnet.subnet.id }}"
+      routes:
+        - dest: 0.0.0.0/0
+          gateway_id: "{{ nat_gateway.nat_gateway_id }}"
+    register: private_route_table
+  - name: Create a security group for brain
+    ec2_group:
+      name: "{{ brain_vpc.sec_group.name }}"
+      description: Create first security group for brain
+      vpc_id: "{{ vpc.vpc_id }}"
+      region: "{{ brain_vpc.region }}"
+      rules:
+        - proto: tcp
+          from_port: 80
+          to_port: 80
+          cidr_ip: 0.0.0.0/0
+        - proto: tcp
+          from_port: 443
+          to_port: 443
+          cidr_ip: 0.0.0.0/0
+        - proto: tcp
+          from_port: 22
+          to_port: 22
+          cidr_ip: 10.180.0.0/16
+    register: brain_sec_group
+  - name: Provision ec2 instance for stackstorm
+    ec2:
+      region: "{{ brain_vpc.region }}"
+      instance_type: "{{ st2.instance_type }}"
+      image: "{{ st2.image_id }}"
+      keypair: "{{ st2.keypair }}"
+      assign_public_ip: True
+      wait: True
+      vpc_subnet_id: "{{ public_subnet.subnet.id }}"
+      group: ["{{ brain_vpc.sec_group.name }}"]
+      instance_tags: "{{ st2.tags }}"
+      exact_count: 1
+      count_tag: "{{ st2.count_tags }}"
+    register: st2
+  - name: Set instance facts
+    set_fact:
+      st2_public_ip: "{{ st2.tagged_instances[0].public_ip }}"
+    when: st2.tagged_instances is defined
+  - name: Add st2 to local host group
+    lineinfile:
+      dest: "./hosts"
+      regexp: "{{ st2_public_ip }}"
+      insertafter: "[st2]"
+      line: "{{ st2_public_ip }}"
+  - debug: var=item
+    with_items: st2.tagged_instances
