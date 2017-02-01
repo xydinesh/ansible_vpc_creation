@@ -1,0 +1,5 @@
+# This role installs stackstorm and configures it.
+- name: APT Update
+  apt: update_cache=yes
+  become: true
+
