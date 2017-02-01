@@ -1,0 +1,23 @@
+---
+brain_vpc:
+  cidr: 10.0.0.0/16
+  region: us-east-2
+  igw: True
+  tags: { "env":"dev", "Name": "nibiru_vpc" }
+  public_subnet:
+    cidr: 10.0.1.0/24
+    az: us-east-2a
+    tags: { "Name": "public subnet" }
+  private_subnet:
+    cidr: 10.0.2.0/24
+    az: us-east-2b
+    tags: { "Name": "private subnet" }
+  sec_group:
+    name: brain_sec_group
+
+st2:
+  instance_type: m4.large
+  image_id: ami-15174d70
+  keypair: brain-surgery
+  tags: { "Name": "stackstorm" }
+  count_tags: { "Name": "stackstorm" }
