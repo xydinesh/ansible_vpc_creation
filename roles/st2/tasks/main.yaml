@@ -1,5 +1,28 @@
-# This role installs stackstorm and configures it.
-- name: APT Update
+- name: Update cache
   apt: update_cache=yes
   become: true
 
+- name: Install curl
+  apt: name="{{ item }}" state=present
+  with_items:
+    - gnupg1-curl
+    - curl
+  become: true
+
+- name: Update key for mongodb
+  apt_key: keyserver=keyserver.ubuntu.com id=EA312927
+  become: true
+
+- name: Create mongo source list
+  apt_repository:
+    repo: deb http://repo.mongodb.org/apt/ubuntu trusty/mongodb-org/3.2 multiverse
+    state: present
+  become: true
+
+- name: Install mongodb, rabbitmq and postgresql
+  apt: name="{{ item }}" state=present
+  with_items:
+    - mongodb-org
+    - rabbitmq-server
+    - postgresql
+  become: true
