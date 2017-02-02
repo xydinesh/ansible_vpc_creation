@@ -86,7 +86,7 @@
         - proto: tcp
           from_port: 22
           to_port: 22
-          cidr_ip: 10.180.0.0/16
+          cidr_ip: 0.0.0.0/0
         - proto: tcp
           from_port: 22
           to_port: 22
@@ -103,7 +103,7 @@
       vpc_subnet_id: "{{ public_subnet.subnet.id }}"
       group: ["{{ brain_vpc.sec_group.name }}"]
       instance_tags: "{{ st2.tags }}"
-      exact_count: 1
+      exact_count: "{{ st2.exact_count }}"
       count_tag: "{{ st2.count_tags }}"
     register: st2
   - debug: var=item

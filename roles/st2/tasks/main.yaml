@@ -1,23 +1,19 @@
 - name: Update cache
   apt: update_cache=yes
-  become: true
 
 - name: Install curl
   apt: name="{{ item }}" state=present
   with_items:
-    - gnupg1-curl
+    - gnupg-curl
     - curl
-  become: true
 
 - name: Update key for mongodb
-  apt_key: keyserver=keyserver.ubuntu.com id=EA312927
-  become: true
+  apt_key: keyserver=keyserver.ubuntu.com id=0C49F3730359A14518585931BC711F9BA15703C6
 
 - name: Create mongo source list
   apt_repository:
-    repo: deb http://repo.mongodb.org/apt/ubuntu trusty/mongodb-org/3.2 multiverse
+    repo: deb http://repo.mongodb.org/apt/ubuntu xenial/mongodb-org/3.4 multiverse
     state: present
-  become: true
 
 - name: Install mongodb, rabbitmq and postgresql
   apt: name="{{ item }}" state=present
@@ -25,4 +21,20 @@
     - mongodb-org
     - rabbitmq-server
     - postgresql
-  become: true
+
+- name: Set mongod INIT status and start
+  service: name=mongod state=started enabled=yes
+
+- name: Download installation script
+  get_url: url=https://packagecloud.io/install/repositories/StackStorm/stable/script.deb.sh dest=/tmp/st2_installer.sh mode=0755
+
+- name: Run st2-installer script
+  shell: /tmp/st2_installer.sh
+  args:
+    executable: bash
+
+- name: Install st2 and st2-mistral
+  apt: name="{{ item }}" state=present update_cache=yes
+  with_items:
+    - st2
+    - st2mistral

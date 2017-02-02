@@ -17,7 +17,8 @@ brain_vpc:
 
 st2:
   instance_type: m4.large
-  image_id: ami-15174d70
+  image_id: ami-fcc19b99
   keypair: brain-surgery
   tags: { "Name": "stackstorm" , "type": "stackstorm"}
   count_tags: { "Name": "stackstorm" }
+  exact_count: 1

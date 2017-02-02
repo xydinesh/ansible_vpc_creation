@@ -1,5 +1,8 @@
 # Configure and deploy stackstorm
 - hosts: st2
+  become: True
+  vars_files:
+    - group_vars/brain_vpc.txt
   roles:
   - st2
   tags:
