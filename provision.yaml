@@ -87,10 +87,6 @@
           from_port: 22
           to_port: 22
           cidr_ip: 0.0.0.0/0
-        - proto: tcp
-          from_port: 22
-          to_port: 22
-          cidr_ip: 71.212.172.253/32
     register: brain_sec_group
   - name: Provision ec2 instance for stackstorm
     ec2:

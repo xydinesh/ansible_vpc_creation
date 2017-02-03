@@ -2,4 +2,5 @@
 tag_type_stackstorm
 
 [tag_type_stackstorm:vars]
-ansible_python_interpreter=/usr/bin/python3
+ansible_python_interpreter=/usr/bin/python
+
