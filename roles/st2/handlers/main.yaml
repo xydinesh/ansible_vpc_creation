@@ -37,14 +37,6 @@
 - name: reload st2
   command: st2ctl reload
   register: reload_st2
-  notify: test st2
-
-- name: test st2
-  command: st2 action list --pack=core
-  notify: test action list
-
-- name: test action list
-  command: st2 execution list
 
 - name: restart st2api
   command: st2ctl restart-component st2api
@@ -54,7 +46,7 @@
   notify: remove default nginx conf
 
 - name: remove default nginx conf
-  command: rm /etc/nginx/sites-available/default
+  file: state=absent path=/etc/nginx/sites-available/default
 
 - name: restart nginx
   service: name=nginx state=restarted

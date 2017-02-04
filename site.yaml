@@ -1,5 +1,5 @@
 # Configure and deploy stackstorm
-- hosts: st2
+- hosts: tag_type_stackstorm
   gather_facts: True
   become: True
   roles:

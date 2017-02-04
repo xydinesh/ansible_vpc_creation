@@ -69,7 +69,7 @@
         "tag:Name": "public subnet"
     register: public_subnet_facts
 
-   - name: Set public_subnet_id
+  - name: Set public_subnet_id
     set_fact:
       public_subnet_id: "{{ public_subnet_facts.subnets[0].id }}"
 
