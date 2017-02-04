@@ -1,0 +1,60 @@
+---
+- name: Start mongod
+  service: name=mongod state=started enabled=yes
+
+- name: Restart mongod
+  service: name=mongod state=restarted
+
+- name: Create postgres user for mistral
+  postgresql_user:
+    state: present
+    name: mistral
+    password: StackStorm
+    encrypted: yes
+    role_attr_flags: CREATEDB,LOGIN
+  become_user: postgres
+  notify: Create postgres db for mistral
+
+- name: Create postgres db for mistral
+  postgresql_db: name=mistral owner=mistral state=present
+  become_user: postgres
+  notify: Create mistral tables
+
+- name: Create mistral tables
+  command: /opt/stackstorm/mistral/bin/mistral-db-manage --config-file /etc/mistral/mistral.conf upgrade head
+  become_user: mistral
+  notify: Populate mistral tables
+
+- name: Populate mistral tables
+  command: /opt/stackstorm/mistral/bin/mistral-db-manage --config-file /etc/mistral/mistral.conf populate
+  become_user: mistral
+
+- name: restart st2
+  command: st2ctl start
+  register: restart_st2
+  notify: reload st2
+
+- name: reload st2
+  command: st2ctl reload
+  register: reload_st2
+  notify: test st2
+
+- name: test st2
+  command: st2 action list --pack=core
+  notify: test action list
+
+- name: test action list
+  command: st2 execution list
+
+- name: restart st2api
+  command: st2ctl restart-component st2api
+
+- name: Generate certificates
+  command: openssl req -x509 -newkey rsa:2048 -keyout /etc/ssl/st2/st2.key -out /etc/ssl/st2/st2.crt -days 1500 -nodes -subj "/C=US/ST=California/L=Palo Alto/O=StackStorm/OU=Information Technology/CN=$(hostname)"
+  notify: remove default nginx conf
+
+- name: remove default nginx conf
+  command: rm /etc/nginx/sites-available/default
+
+- name: restart nginx
+  service: name=nginx state=restarted

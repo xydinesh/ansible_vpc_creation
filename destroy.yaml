@@ -1,0 +1,140 @@
+---
+# Destroy EC2
+- name: Delete EC2 instance from VPC
+  hosts: tag_type_stackstorm
+  gather_facts: True
+
+  # load AWS variables from this group vars file
+  vars_files:
+  - group_vars/brain_vpc.txt
+
+  tasks:
+  - name: Remove security group from the instance
+    ec2:
+      state: running
+      region: "{{ brain_vpc.region }}"
+      instance_ids: "{{ ec2_id }}"
+      wait: True
+      group: ""
+      instance_tags: "{{ st2.tags }}"
+    delegate_to: "localhost"
+
+  - name: Destroy ec2 instance for stackstorm
+    ec2:
+      state: absent
+      region: "{{ brain_vpc.region }}"
+      instance_ids: "{{ ec2_id }}"
+      wait: True
+    delegate_to: "localhost"
+
+# Destroy VPC
+- name: Delete VPC in AWS
+  hosts: localhost
+  connection: local
+  gather_facts: True
+
+  vars_files:
+  - group_vars/brain_vpc.txt
+
+  tasks:
+  - name: Delete security group for brain
+    ec2_group:
+      state: absent
+      description: Create first security group for brain
+      name: "{{ brain_vpc.sec_group.name }}"
+      region: "{{ brain_vpc.region }}"
+
+  - name: Gather vpc facts
+    ec2_vpc_net_facts:
+      region: "{{ brain_vpc.region }}"
+      filters:
+        "tag:Name": "{{ brain_vpc.name }}"
+    register: vpc_facts
+
+  - name: Set vpc_id
+    set_fact:
+      vpc_id: "{{ vpc_facts.vpcs[0].id }}"
+
+  - name: Gather subnet facts
+    ec2_vpc_subnet_facts:
+      region: "{{ brain_vpc.region }}"
+      filters:
+        vpc-id: "{{ vpc_id }}"
+    register: subnet_facts
+
+  - name: Gather public subnet facts
+    ec2_vpc_subnet_facts:
+      region: "{{ brain_vpc.region }}"
+      filters:
+        "tag:Name": "public subnet"
+    register: public_subnet_facts
+
+   - name: Set public_subnet_id
+    set_fact:
+      public_subnet_id: "{{ public_subnet_facts.subnets[0].id }}"
+
+  - name: Gather route table facts
+    ec2_vpc_route_table_facts:
+      region: "{{ brain_vpc.region }}"
+      filters:
+        "tag:env": "{{ brain_vpc.env }}"
+    register: route_table_facts
+
+  - name: Remove routes from route table
+    ec2_vpc_route_table:
+      vpc_id: "{{ vpc_id }}"
+      region: "{{ brain_vpc.region }}"
+      routes:
+        - dest: "{{ brain_vpc.cidr }}"
+          gateway_id: "local"
+      tags: "{{ item.tags }}"
+    with_items: "{{ route_table_facts.route_tables }}"
+
+  - name: Delete internet gateway
+    ec2_vpc_igw:
+      state: absent
+      region: "{{ brain_vpc.region }}"
+      vpc_id: "{{ vpc_id }}"
+
+  - name: Delete route tables
+    ec2_vpc_route_table:
+      state: absent
+      vpc_id: "{{ vpc_id }}"
+      region: "{{ brain_vpc.region }}"
+      routes:
+        - dest: "{{ brain_vpc.cidr }}"
+          gateway_id: "local"
+      tags: "{{ item.tags }}"
+    with_items: "{{ route_table_facts.route_tables }}"
+
+  - name: Get nat gateway information
+    ec2_vpc_nat_gateway:
+      state: present
+      subnet_id: "{{ public_subnet_id }}"
+      region: "{{ brain_vpc.region }}"
+      if_exist_do_not_create: true
+    register: nat_gateway
+
+  - name: Delete nat gateway
+    ec2_vpc_nat_gateway:
+      state: absent
+      subnet_id: "{{ public_subnet_id }}"
+      nat_gateway_id: "{{ nat_gateway.nat_gateway_id }}"
+      release_eip: yes
+      wait: yes
+      region: "{{ brain_vpc.region }}"
+
+  - name: Delete subnets
+    ec2_vpc_subnet:
+      state: absent
+      vpc_id: "{{ item.vpc_id }}"
+      region: "{{ brain_vpc.region }}"
+      cidr: "{{ item.cidr_block }}"
+    with_items: "{{ subnet_facts.subnets }}"
+
+  - name: Delete VPC
+    ec2_vpc_net:
+      state: absent
+      cidr_block: "{{ brain_vpc.cidr }}"
+      name: "{{ brain_vpc.name }}"
+      region: "{{ brain_vpc.region }}"

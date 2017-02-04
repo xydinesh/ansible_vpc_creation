@@ -1,18 +1,22 @@
 - name: Update cache
   apt: update_cache=yes
 
+- name: Add nginx repository
+  apt_repository: repo=ppa:nginx/stable update_cache=yes
+
 - name: Install curl
   apt: name="{{ item }}" state=present
   with_items:
     - gnupg-curl
     - curl
+    - nginx
 
 - name: Update key for mongodb
-  apt_key: keyserver=keyserver.ubuntu.com id=0C49F3730359A14518585931BC711F9BA15703C6
+  apt_key: keyserver=keyserver.ubuntu.com id=EA312927
 
 - name: Create mongo source list
   apt_repository:
-    repo: deb http://repo.mongodb.org/apt/ubuntu xenial/mongodb-org/3.4 multiverse
+    repo: deb http://repo.mongodb.org/apt/ubuntu xenial/mongodb-org/3.2 multiverse
     state: present
 
 - name: Install mongodb, rabbitmq and postgresql
@@ -23,9 +27,11 @@
     - postgresql
     - postgresql-contrib
     - python-psycopg2
+  notify: Start mongod
 
-- name: Set mongod INIT status and start
-  service: name=mongod state=started enabled=yes
+- name: Copy mongodb configuration file
+  template: src=mongod.service.j2 dest=/lib/systemd/system/mongod.service
+  notify: Restart mongod
 
 - name: Download installation script
   get_url: url=https://packagecloud.io/install/repositories/StackStorm/stable/script.deb.sh dest=/tmp/st2_installer.sh mode=0755
@@ -40,37 +46,45 @@
   with_items:
     - st2
     - st2mistral
+    - st2web
+  notify: Create postgres user for mistral
 
-- name: Create postgres user for mistral
-  postgresql_user:
+- name: Make sure we have a 'wheel' group
+  group:
+    name: wheel
     state: present
-    name: mistral
-    password: StackStorm
-    encrypted: yes
-    role_attr_flags: CREATEDB,LOGIN
-  become_user: postgres
 
-- name: Create postgres db for mistral
-  postgresql_db: name=mistral owner=mistral state=present
-  become_user: postgres
-
-- name: Create mistral tables
-  command: /opt/stackstorm/mistral/bin/mistral-db-manage --config-file /etc/mistral/mistral.conf upgrade head
-  become_user: mistral
-
-- name: Populate mistral tables
-  command: /opt/stackstorm/mistral/bin/mistral-db-manage --config-file /etc/mistral/mistral.conf populate
-  become_user: mistral
+- name: Allow 'wheel' group to have passwordless sudo
+  lineinfile:
+    dest: /etc/sudoers
+    state: present
+    regexp: '^%wheel'
+    line: '%wheel ALL=(ALL) NOPASSWD: ALL'
 
 - name: Add system user
   user:
     name: stanley
+    group: wheel
+    append: yes
     generate_ssh_key: yes
     ssh_key_bits: 2048
     ssh_key_file: .ssh/stanley_rsa
 
 - name: Copy configuration file
-  template:
-    src: ../template/st2.conf.j2
-    dest: /etc/st2/st2.conf
-    backup: yes
+  template: src=st2.conf.j2 dest=/etc/st2/st2.conf backup=yes
+  notify: restart st2
+
+- name: Configure authentication
+  template: src=htpasswd.j2 dest=/etc/st2/htpasswd
+  notify: restart st2api
+
+- name: Creat self signed certificates
+  file: path=/etc/ssl/st2 state=directory
+  notify: Generate certificates
+
+- name: Copy nginx config
+  template: src=st2.nginx.j2 dest=/etc/nginx/sites-available/st2.conf
+
+- name: Symlink sites-avalable
+  file: state=link src=/etc/nginx/sites-available/st2.conf dest=/etc/nginx/sites-enabled/st2.conf
+  notify: restart nginx

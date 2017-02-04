@@ -1,5 +1,6 @@
 # Configure and deploy stackstorm
 - hosts: st2
+  gather_facts: True
   become: True
   roles:
     - role: st2

@@ -5,74 +5,88 @@
   connection: local
   gather_facts: False
 
-  # load AWS variables from this group vars file
   vars_files:
   - group_vars/brain_vpc.txt
 
   tasks:
   - name: create vpc
-    ec2_vpc:
+    ec2_vpc_net:
+      name: "{{ brain_vpc.name }}"
       state: present
       cidr_block: "{{ brain_vpc.cidr }}"
-      resource_tags: "{{ brain_vpc.tags }}"
-      internet_gateway: "{{ brain_vpc.igw }}"
-      region: us-east-2
+      tags: "{{ brain_vpc.tags }}"
+      region: "{{ brain_vpc.region }}"
     register: vpc
+
+  - name: create internet gateway
+    ec2_vpc_igw:
+      state: present
+      region: "{{ brain_vpc.region }}"
+      vpc_id: "{{ vpc.vpc.id }}"
+    register: igw
+
   - name: create public subnet
     ec2_vpc_subnet:
       state: present
-      vpc_id: "{{ vpc.vpc_id }}"
+      vpc_id: "{{ vpc.vpc.id }}"
       cidr: "{{ brain_vpc.public_subnet.cidr }}"
       az: "{{ brain_vpc.public_subnet.az }}"
       region: "{{ brain_vpc.region }}"
       resource_tags: "{{ brain_vpc.public_subnet.tags }}"
     register: public_subnet
+
   - name: create private subnet
     ec2_vpc_subnet:
       state: present
-      vpc_id: "{{ vpc.vpc_id }}"
+      vpc_id: "{{ vpc.vpc.id }}"
       cidr: "{{ brain_vpc.private_subnet.cidr }}"
       az: "{{ brain_vpc.private_subnet.az }}"
       region: "{{ brain_vpc.region }}"
       resource_tags: "{{ brain_vpc.private_subnet.tags }}"
     register: private_subnet
+
   - name: Set up public subnet route table
     ec2_vpc_route_table:
-      vpc_id: "{{ vpc.vpc_id }}"
-      region: us-east-2
+      vpc_id: "{{ vpc.vpc.id }}"
+      region: "{{ brain_vpc.region }}"
       tags:
         Name: "public route table"
+        env:  "{{ brain_vpc.env }}"
       subnets:
         - "{{ public_subnet.subnet.id }}"
       routes:
         - dest: 0.0.0.0/0
-          gateway_id: "{{ vpc.igw_id }}"
+          gateway_id: "{{ igw.gateway_id }}"
     register: public_route_table
-  - name: Create new nat gateway and allocate new EIP
+
+  - name: Create new nat gateway
     ec2_vpc_nat_gateway:
       state: present
       subnet_id: "{{ public_subnet.subnet.id }}"
       wait: yes
-      region: us-east-2
+      region: "{{ brain_vpc.region }}"
       if_exist_do_not_create: true
     register: nat_gateway
+
   - name: Set up private subnet route table
     ec2_vpc_route_table:
-      vpc_id: "{{ vpc.vpc_id }}"
-      region: us-east-2
+      vpc_id: "{{ vpc.vpc.id }}"
+      region: "{{ brain_vpc.region }}"
       tags:
         Name: "private route table"
+        env:  "{{ brain_vpc.env }}"
       subnets:
         - "{{ private_subnet.subnet.id }}"
       routes:
         - dest: 0.0.0.0/0
           gateway_id: "{{ nat_gateway.nat_gateway_id }}"
     register: private_route_table
+
   - name: Create a security group for brain
     ec2_group:
       name: "{{ brain_vpc.sec_group.name }}"
       description: Create first security group for brain
-      vpc_id: "{{ vpc.vpc_id }}"
+      vpc_id: "{{ vpc.vpc.id }}"
       region: "{{ brain_vpc.region }}"
       rules:
         - proto: tcp
@@ -88,6 +102,7 @@
           to_port: 22
           cidr_ip: 0.0.0.0/0
     register: brain_sec_group
+
   - name: Provision ec2 instance for stackstorm
     ec2:
       region: "{{ brain_vpc.region }}"
@@ -101,6 +116,5 @@
       instance_tags: "{{ st2.tags }}"
       exact_count: "{{ st2.exact_count }}"
       count_tag: "{{ st2.count_tags }}"
+      user_data: "{{st2.user_data }}"
     register: st2
-  - debug: var=item
-    with_items: st2.tagged_instances

@@ -3,15 +3,17 @@ brain_vpc:
   cidr: 10.0.0.0/16
   region: us-east-2
   igw: True
-  tags: { "env":"dev", "Name": "nibiru_vpc" }
+  tags: { "Name": "nibiru_vpc" , "env": "dev" }
+  name: brain_vpc
+  env: dev
   public_subnet:
     cidr: 10.0.1.0/24
     az: us-east-2a
-    tags: { "Name": "public subnet" }
+    tags: { "Name": "public subnet" , "env": "dev"}
   private_subnet:
     cidr: 10.0.2.0/24
     az: us-east-2b
-    tags: { "Name": "private subnet" }
+    tags: { "Name": "private subnet" , "env": "dev" }
   sec_group:
     name: brain_sec_group
 
@@ -22,3 +24,7 @@ st2:
   tags: { "Name": "stackstorm" , "type": "stackstorm"}
   count_tags: { "Name": "stackstorm" }
   exact_count: 1
+  user_data: |
+    #!/bin/sh
+    sudo apt-get update -qq
+    sudo apt-get install python-minimal -y
